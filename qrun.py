@@ -8,8 +8,9 @@ import argparse
 import subprocess
 
 
-def cmdexe(cmdstring):
-    return subprocess.check_output(cmdstring.split())
+def cmdexe(cmdstring, print_stderr=True):
+    x = None if print_stderr else subprocess.PIPE
+    return subprocess.check_output(cmdstring.split(), stderr=x)
 
 
 def get_backend_ifname(args):
@@ -56,7 +57,7 @@ argparser.add_argument('--br-idx',
                        type = int, default = 1)
 argparser.add_argument('-b', '--backend-type',
                        help = "Network backend", type = str,
-                       choices = ['tap', 'vale'],
+                       choices = ['tap', 'vale', 'none'],
                        default = 'tap')
 argparser.add_argument('-f', '--frontend-type',
                        help = "Network frontend", type = str,
@@ -88,6 +89,8 @@ if args.install_from_iso != '':
     args.vm_output_mode = 'window'
 
 try:
+    backend_ifname = get_backend_ifname(args)
+
     cmdline = 'qemu-system-x86_64'
     cmdline += ' %s' % args.image
     if args.kvm:
@@ -114,30 +117,51 @@ try:
     cmdline += ' -device e1000,netdev=mgmt,mac=00:AA:BB:CC:%02x:99' % args.idx
     cmdline += ' -netdev user,id=mgmt,hostfwd=tcp::%d-:22' % args.ssh_port
 
-    # Add data interface
-    cmdline += ' -device %s,netdev=data%d,mac=00:AA:BB:CC:%02x:01' % (args.frontend_type, args.idx, args.idx)
-    if args.frontend_type in ['virtio-net-pci', 'e1000-paravirt']:
-        cmdline += ',ioeventfd=%s' % ('on' if args.ioeventfd else 'off',)
-    if args.frontend_type in ['e1000', 'e1000-paravirt']:
-        cmdline += ',mitigation=%s' % ('on' if args.interrupt_mitigation else 'off',)
-    if args.frontend_type in ['virtio-net-pci']:
-        cmdline += ',mrg_rxbuf=%s' % ('on' if args.mrg_rx_bufs else 'off',)
-        if args.num_queues > 1:
-            cmdline += ',mq=on,vectors=%d' % 2*args.num_queues+1
-            # enable multi-queuing into the guest using
-            #         ethtool -L eth0 combined args.num_queues
+    if args.backend_type != 'none':
+        # Add data interface
+        cmdline += ' -device %s,netdev=data%d,mac=00:AA:BB:CC:%02x:01' \
+                    % (args.frontend_type, args.idx, args.idx)
+        if args.frontend_type in ['virtio-net-pci', 'e1000-paravirt']:
+            cmdline += ',ioeventfd=%s' % ('on' if args.ioeventfd else 'off',)
+        if args.frontend_type in ['e1000', 'e1000-paravirt']:
+            cmdline += ',mitigation=%s' % ('on' if args.interrupt_mitigation else 'off',)
+        if args.frontend_type in ['virtio-net-pci']:
+            cmdline += ',mrg_rxbuf=%s' % ('on' if args.mrg_rx_bufs else 'off',)
+            if args.num_queues > 1:
+                cmdline += ',mq=on,vectors=%d' % 2*args.num_queues+1
+                # enable multi-queuing into the guest using
+                #         ethtool -L eth0 combined args.num_queues
 
-    # Add data backend
-    cmdline += ' -netdev %s,ifname=%s,id=data%d' % (args.backend_type, get_backend_ifname(args), args.idx )
-    if args.frontend_type in ['virtio-net-pci'] and args.backend_type in ['tap']:
-        cmdline += ',vhost=%s' % ('on' if args.vhost_net else 'off',)
-    if args.backend_type in ['tap']:
-        cmdline += ',script=no,downscript=no'
-        if args.num_queues > 1:
-            cmdline += ',queues=%d' % args.num_queues
+        # Add data backend
+        cmdline += ' -netdev %s,ifname=%s,id=data%d' % (args.backend_type, backend_ifname, args.idx )
+        if args.frontend_type in ['virtio-net-pci'] and args.backend_type in ['tap']:
+            cmdline += ',vhost=%s' % ('on' if args.vhost_net else 'off',)
+        if args.backend_type in ['tap']:
+            cmdline += ',script=no,downscript=no'
+            if args.num_queues > 1:
+                cmdline += ',queues=%d' % args.num_queues
 
     if args.dry_run:
         print(cmdline)
+        exit(0)
+
+    if args.backend_type == 'tap':
+        try:
+            cmdexe('sudo brctl addbr br%02d' % args.br_idx, False)
+            cmdexe('sudo ip link set br%02d up' % args.br_idx)
+        except:
+            # They bridge may already exist
+            pass
+        cmdexe('sudo ip tuntap add mode tap name %s' % backend_ifname)
+        cmdexe('sudo ip link set %s up' % backend_ifname)
+        cmdexe('sudo brctl addif br%02d %s' % (args.br_idx, backend_ifname))
+
+    print('CREATED')
+
+    if args.backend_type == 'tap':
+        cmdexe('sudo ip link set %s down' % backend_ifname)
+        cmdexe('sudo brctl delif br%02d %s' % (args.br_idx, backend_ifname))
+        cmdexe('sudo ip tuntap del mode tap name %s' % backend_ifname)
 
 except subprocess.CalledProcessError as e:
     print(e.output)
