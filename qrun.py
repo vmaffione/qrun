@@ -156,7 +156,7 @@ try:
         cmdexe('sudo brctl addif br%02d %s' % (args.br_idx, backend_ifname))
 
     try:
-        cmdexe(cmdline)
+        subprocess.check_call(cmdline, shell=True)
     except:
         print('QEMU terminated with an exception')
 
