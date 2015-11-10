@@ -81,8 +81,7 @@ argparser.add_argument('--vmpi', action='store_true',
                        help = "Add a VMPI device")
 
 args = argparser.parse_args()
-
-print(args)
+#print(args)
 
 if args.install_from_iso != '':
     args.temp = False
@@ -156,7 +155,10 @@ try:
         cmdexe('sudo ip link set %s up' % backend_ifname)
         cmdexe('sudo brctl addif br%02d %s' % (args.br_idx, backend_ifname))
 
-    print('CREATED')
+    try:
+        cmdexe(cmdline)
+    except:
+        print('QEMU terminated with an exception')
 
     if args.backend_type == 'tap':
         cmdexe('sudo ip link set %s down' % backend_ifname)
