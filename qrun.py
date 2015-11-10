@@ -12,6 +12,13 @@ def cmdexe(cmdstring):
     return subprocess.check_output(cmdstring.split())
 
 
+def get_backend_ifname(args):
+    if args.backend_type == 'vale':
+        return args.backend_type + '%d:%d' % (args.br_idx, args.idx)
+
+    return args.backend_type + '%d_%d' % (args.br_idx, args.idx)
+
+
 description = "Python script to launch QEMU VMs"
 epilog = "2015 Vincenzo Maffione"
 
@@ -42,7 +49,10 @@ argparser.add_argument('--temp', dest = 'temp_mode',
                        action='store_true',
                        help = "Enable non persistent disk mode")
 argparser.add_argument('-n', '--idx',
-                       help = "Index port to be used with TAP and VALE",
+                       help = "Port index to be used with TAP and VALE",
+                       type = int, default = 1)
+argparser.add_argument('--br-idx',
+                       help = "Bridge index to be used with TAP and VALE",
                        type = int, default = 1)
 argparser.add_argument('-b', '--backend-type',
                        help = "Network backend", type = str,
@@ -57,13 +67,15 @@ argparser.add_argument('--no-kvm', dest='kvm', action='store_false',
                        help = "Disable KVM, falling back to userspace emulation")
 argparser.add_argument('--vhost-net', action='store_true',
                        help = "Enable vhost-net optimization")
-argparser.add_argument('--no-mrg-rx-bufs', action='store_false',
+argparser.add_argument('--no-mrg-rx-bufs', dest='mrg_rx_bufs', action='store_false',
                        help = "Disable virtio-net mergeable RX buffers")
 argparser.add_argument('--no-ioeventfd', dest='ioeventfd', action='store_false',
                        help = "Disable ioeventfd optimization")
 argparser.add_argument('--num-queues',
                        help = "Number of queues in a TAP device",
                        type = int, default = 1)
+argparser.add_argument('--interrupt-mitigation', action='store_true',
+                       help = "Enable NIC interrupt mitigation")
 argparser.add_argument('--vmpi', action='store_true',
                        help = "Add a VMPI device")
 
@@ -97,6 +109,32 @@ try:
     if args.install_from_iso != '':
         cmdline += ' -cdrom %s' % args.install_from_iso
         cmdline += ' boot order=dc'
+
+    # Add management interface with netuser backend
+    cmdline += ' -device e1000,netdev=mgmt,mac=00:AA:BB:CC:%02x:99' % args.idx
+    cmdline += ' -netdev user,id=mgmt,hostfwd=tcp::%d-:22' % args.ssh_port
+
+    # Add data interface
+    cmdline += ' -device %s,netdev=data%d,mac=00:AA:BB:CC:%02x:01' % (args.frontend_type, args.idx, args.idx)
+    if args.frontend_type in ['virtio-net-pci', 'e1000-paravirt']:
+        cmdline += ',ioeventfd=%s' % ('on' if args.ioeventfd else 'off',)
+    if args.frontend_type in ['e1000', 'e1000-paravirt']:
+        cmdline += ',mitigation=%s' % ('on' if args.interrupt_mitigation else 'off',)
+    if args.frontend_type in ['virtio-net-pci']:
+        cmdline += ',mrg_rxbuf=%s' % ('on' if args.mrg_rx_bufs else 'off',)
+        if args.num_queues > 1:
+            cmdline += ',mq=on,vectors=%d' % 2*args.num_queues+1
+            # enable multi-queuing into the guest using
+            #         ethtool -L eth0 combined args.num_queues
+
+    # Add data backend
+    cmdline += ' -netdev %s,ifname=%s,id=data%d' % (args.backend_type, get_backend_ifname(args), args.idx )
+    if args.frontend_type in ['virtio-net-pci'] and args.backend_type in ['tap']:
+        cmdline += ',vhost=%s' % ('on' if args.vhost_net else 'off',)
+    if args.backend_type in ['tap']:
+        cmdline += ',script=no,downscript=no'
+        if args.num_queues > 1:
+            cmdline += ',queues=%d' % args.num_queues
 
     if args.dry_run:
         print(cmdline)
