@@ -14,8 +14,8 @@ def cmdexe(cmdstring, print_stderr=True):
 
 
 def get_backend_ifname(args):
-    if args.backend_type == 'vale':
-        return args.backend_type + '%d:%d' % (args.br_idx, args.idx)
+    if args.backend_type == 'netmap':
+        return 'vale%d:%d' % (args.br_idx, args.idx)
 
     return args.backend_type + '%d_%d' % (args.br_idx, args.idx)
 
@@ -57,7 +57,7 @@ argparser.add_argument('--br-idx',
                        type = int, default = 1)
 argparser.add_argument('-b', '--backend-type',
                        help = "Network backend", type = str,
-                       choices = ['tap', 'vale', 'none'],
+                       choices = ['tap', 'netmap', 'none'],
                        default = 'tap')
 argparser.add_argument('-f', '--frontend-type',
                        help = "Network frontend", type = str,
