@@ -64,6 +64,8 @@ argparser.add_argument('-f', '--frontend-type',
                        choices = ['e1000', 'virtio-net-pci', 'pcnet',
                                   'ne2k_pci', 'rtl8139', 'e1000-paravirt'],
                        default = 'e1000')
+argparser.add_argument('--no-bridging', dest='bridging', action='store_false',
+                       help = "When TAP backend is used, don't attach it to a bridge")
 argparser.add_argument('--no-kvm', dest='kvm', action='store_false',
                        help = "Disable KVM, falling back to userspace emulation")
 argparser.add_argument('--vhost-net', action='store_true',
@@ -145,15 +147,19 @@ try:
         exit(0)
 
     if args.backend_type == 'tap':
-        try:
-            cmdexe('sudo brctl addbr br%02d' % args.br_idx, False)
-            cmdexe('sudo ip link set br%02d up' % args.br_idx)
-        except:
-            # They bridge may already exist
-            pass
+        if args.bridging:
+            try:
+                cmdexe('sudo brctl addbr br%02d' % args.br_idx, False)
+                cmdexe('sudo ip link set br%02d up' % args.br_idx)
+            except:
+                # They bridge may already exist
+                pass
+
         cmdexe('sudo ip tuntap add mode tap name %s' % backend_ifname)
         cmdexe('sudo ip link set %s up' % backend_ifname)
-        cmdexe('sudo brctl addif br%02d %s' % (args.br_idx, backend_ifname))
+
+        if args.bridging:
+            cmdexe('sudo brctl addif br%02d %s' % (args.br_idx, backend_ifname))
 
     try:
         subprocess.check_call(cmdline, shell=True)
@@ -162,7 +168,10 @@ try:
 
     if args.backend_type == 'tap':
         cmdexe('sudo ip link set %s down' % backend_ifname)
-        cmdexe('sudo brctl delif br%02d %s' % (args.br_idx, backend_ifname))
+
+        if args.bridging:
+            cmdexe('sudo brctl delif br%02d %s' % (args.br_idx, backend_ifname))
+
         cmdexe('sudo ip tuntap del mode tap name %s' % backend_ifname)
 
 except subprocess.CalledProcessError as e:
