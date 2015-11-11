@@ -26,7 +26,7 @@ epilog = "2015 Vincenzo Maffione"
 argparser = argparse.ArgumentParser(description = description,
                                     epilog = epilog)
 argparser.add_argument('--dry-run', action='store_true',
-                       help = "Only show the build QEMU command line")
+                       help = "Only show the built QEMU command line")
 argparser.add_argument('--install-from-iso',
                        help = "Path to the installation ISO", type = str,
                        default = '')
