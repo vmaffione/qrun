@@ -38,8 +38,7 @@ argparser.add_argument('-p', '--ssh-port',
                        help = "SSH forwarding port",
                        type = int, default = 20010)
 argparser.add_argument('-i', '--image',
-                       help = "Path to the VM image", type = str,
-                       default = 'arch.qcow2')
+                       help = "Path to the VM disk image", type = str)
 argparser.add_argument('--num-cpus',
                        help = "Number of CPUs ofthe VM",
                        type = int, default = 2)
@@ -58,7 +57,7 @@ argparser.add_argument('--br-idx',
 argparser.add_argument('-b', '--backend-type',
                        help = "Network backend", type = str,
                        choices = ['tap', 'netmap', 'none'],
-                       default = 'tap')
+                       default = 'none')
 argparser.add_argument('-f', '--frontend-type',
                        help = "Network frontend", type = str,
                        choices = ['e1000', 'virtio-net-pci', 'pcnet',
@@ -81,11 +80,17 @@ argparser.add_argument('--interrupt-mitigation', action='store_true',
                        help = "Enable NIC interrupt mitigation")
 argparser.add_argument('--vmpi', action='store_true',
                        help = "Add a VMPI device")
+argparser.add_argument('--kernel',
+                       help = "Path to the kernel to be used by the VM "
+                              "(direct boot mode)", type = str)
+argparser.add_argument('--initramfs',
+                       help = "Path to the initramfs image to be used by the "
+                              "VM (direct boot mode)", type = str)
 
 args = argparser.parse_args()
 #print(args)
 
-if args.install_from_iso != '':
+if args.install_from_iso:
     args.temp = False
     args.vm_output_mode = 'window'
 
@@ -93,7 +98,15 @@ try:
     backend_ifname = get_backend_ifname(args)
 
     cmdline = 'qemu-system-x86_64'
-    cmdline += ' %s' % args.image
+    if args.image:
+        cmdline += ' %s' % args.image
+
+    if args.kernel:
+        cmdline += ' -kernel %s' % args.kernel
+        cmdline += ' -append "console=ttyS0"'
+    if args.initramfs:
+        cmdline += ' -initrd %s' % args.initramfs
+
     if args.kvm:
         cmdline += ' -enable-kvm'
     cmdline += ' -smp %d' % args.num_cpus
@@ -110,7 +123,7 @@ try:
     if args.temp_mode:
         cmdline += ' -snapshot'
 
-    if args.install_from_iso != '':
+    if args.install_from_iso:
         cmdline += ' -cdrom %s' % args.install_from_iso
         cmdline += ' boot order=dc'
 
