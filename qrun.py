@@ -34,9 +34,9 @@ argparser.add_argument('-o', '--vm-output-mode',
                        help = "How to access VM console I/O", type = str,
                        choices = ['window', 'stdio', 'none'],
                        default = 'window')
-argparser.add_argument('-p', '--ssh-port',
+argparser.add_argument('-p', '--ssh-base-port',
                        help = "SSH forwarding port",
-                       type = int, default = 20010)
+                       type = int, default = 20000)
 argparser.add_argument('-i', '--image',
                        help = "Path to the VM disk image", type = str)
 argparser.add_argument('--num-cpus',
@@ -86,9 +86,11 @@ argparser.add_argument('--kernel',
 argparser.add_argument('--initramfs',
                        help = "Path to the initramfs image to be used by the "
                               "VM (direct boot mode)", type = str)
-argparser.add_argument('--console-port',
-                       help = "TCP port where to receive serial console from",
-                       type = int)
+argparser.add_argument('--console-tcp', action='store_true',
+                       help = "Redirect serial console to TCP port")
+argparser.add_argument('--console-base-port', type = int,
+                       help = "Base TCP port to redirect serial console to",
+                       default = 30000)
 
 args = argparser.parse_args()
 #print(args)
@@ -130,12 +132,14 @@ try:
         cmdline += ' -cdrom %s' % args.install_from_iso
         cmdline += ' boot order=dc'
 
-    if args.console_port:
-        cmdline += ' -serial tcp:127.0.0.1:%d,server,nowait' % args.console_port
+    if args.console_tcp:
+        cmdline += ' -serial tcp:127.0.0.1:%d,server,nowait' %\
+                     (args.console_base_port + args.idx)
 
     # Add management interface with netuser backend
     cmdline += ' -device e1000,netdev=mgmt,mac=00:AA:BB:CC:%02x:99' % args.idx
-    cmdline += ' -netdev user,id=mgmt,hostfwd=tcp::%d-:22' % args.ssh_port
+    cmdline += ' -netdev user,id=mgmt,hostfwd=tcp::%d-:22' \
+                % (args.ssh_base_port + args.idx)
 
     if args.backend_type != 'none':
         # Add data interface
