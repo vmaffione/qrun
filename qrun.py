@@ -86,6 +86,9 @@ argparser.add_argument('--kernel',
 argparser.add_argument('--initramfs',
                        help = "Path to the initramfs image to be used by the "
                               "VM (direct boot mode)", type = str)
+argparser.add_argument('--console-port',
+                       help = "TCP port where to receive serial console from",
+                       type = int)
 
 args = argparser.parse_args()
 #print(args)
@@ -126,6 +129,9 @@ try:
     if args.install_from_iso:
         cmdline += ' -cdrom %s' % args.install_from_iso
         cmdline += ' boot order=dc'
+
+    if args.console_port:
+        cmdline += ' -serial tcp:127.0.0.1:%d,server,nowait' % args.console_port
 
     # Add management interface with netuser backend
     cmdline += ' -device e1000,netdev=mgmt,mac=00:AA:BB:CC:%02x:99' % args.idx
