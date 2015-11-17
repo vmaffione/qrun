@@ -13,11 +13,11 @@ def cmdexe(cmdstring, print_stderr=True):
     return subprocess.check_output(cmdstring.split(), stderr=x)
 
 
-def get_backend_ifname(args):
-    if args.backend_type == 'netmap':
-        return 'vale%d:%d' % (args.br_idx, args.idx)
+def get_backend_ifname(args, i):
+    if args.backend_type[i] == 'netmap':
+        return 'vale%d:%d' % (args.br_idx[i], args.idx[i])
 
-    return args.backend_type + '%d_%d' % (args.br_idx, args.idx)
+    return args.backend_type[i] + '%d_%d' % (args.br_idx[i], args.idx[i])
 
 
 description = "Python script to launch QEMU VMs"
@@ -48,21 +48,21 @@ argparser.add_argument('-m', '--memory',
 argparser.add_argument('--temp', dest = 'temp_mode',
                        action='store_true',
                        help = "Enable non persistent disk mode")
-argparser.add_argument('-n', '--idx',
+argparser.add_argument('-n', '--idx', action='append',
                        help = "Port index to be used with TAP and VALE",
-                       type = int, default = 1)
-argparser.add_argument('--br-idx',
+                       default = [])
+argparser.add_argument('--br-idx', action='append',
                        help = "Bridge index to be used with TAP and VALE",
-                       type = int, default = 1)
-argparser.add_argument('-b', '--backend-type',
+                       type = int, default = [])
+argparser.add_argument('-b', '--backend-type', action='append',
                        help = "Network backend", type = str,
-                       choices = ['tap', 'netmap', 'none'],
-                       default = 'none')
-argparser.add_argument('-f', '--frontend-type',
+                       choices = ['tap', 'netmap'],
+                       default = [])
+argparser.add_argument('-f', '--frontend-type', action='append',
                        help = "Network frontend", type = str,
                        choices = ['e1000', 'virtio-net-pci', 'pcnet',
                                   'ne2k_pci', 'rtl8139', 'e1000-paravirt'],
-                       default = 'e1000')
+                       default = [])
 argparser.add_argument('--no-bridging', dest='bridging', action='store_false',
                        help = "When TAP backend is used, don't attach it to a bridge")
 argparser.add_argument('--no-kvm', dest='kvm', action='store_false',
@@ -93,6 +93,44 @@ argparser.add_argument('--console-base-port', type = int,
                        default = 30000)
 
 args = argparser.parse_args()
+
+# Validate append integer parameters
+for i in range(len(args.idx)):
+    try:
+        idx = int(args.idx[i])
+        args.idx[i] = idx
+    except ValueError:
+        argparser.error('argument --idx: invalid int value %s' % idx)
+
+for i in range(len(args.br_idx)):
+    try:
+        idx = int(args.br_idx[i])
+        args.br_idx[i] = idx
+    except ValueError:
+        argparser.error('argument --br-idx: invalid int value %s' % idx)
+
+# Complete append lists
+num_backends = max(len(args.idx), len(args.br_idx), len(args.backend_type),
+                   len(args.frontend_type))
+
+if num_backends > 0 and len(args.idx) == 0:
+    args.idx.append(1)
+while len(args.idx) < num_backends:
+    args.idx.append(args.idx[-1] + 1)
+
+if num_backends > 0 and len(args.br_idx) == 0:
+    args.br_idx.append(1)
+while len(args.br_idx) < num_backends:
+    args.br_idx.append(args.br_idx[-1])
+
+while len(args.backend_type) < num_backends:
+    args.backend_type.append('tap')
+
+while len(args.frontend_type) < num_backends:
+    args.frontend_type.append('e1000')
+
+mgmt_idx = args.idx[0] if len(args.idx) > 0 else 1
+
 #print(args)
 
 if args.install_from_iso:
@@ -100,8 +138,6 @@ if args.install_from_iso:
     args.vm_output_mode = 'window'
 
 try:
-    backend_ifname = get_backend_ifname(args)
-
     cmdline = 'qemu-system-x86_64'
     if args.image:
         cmdline += ' %s' % args.image
@@ -134,22 +170,24 @@ try:
 
     if args.console_tcp:
         cmdline += ' -serial tcp:127.0.0.1:%d,server,nowait' %\
-                     (args.console_base_port + args.idx)
+                     (args.console_base_port + mgmt_idx)
 
     # Add management interface with netuser backend
-    cmdline += ' -device e1000,netdev=mgmt,mac=00:AA:BB:CC:%02x:99' % args.idx
+    cmdline += ' -device e1000,netdev=mgmt,mac=00:AA:BB:CC:%02x:99' % mgmt_idx
     cmdline += ' -netdev user,id=mgmt,hostfwd=tcp::%d-:22' \
-                % (args.ssh_base_port + args.idx)
+                % (args.ssh_base_port + mgmt_idx)
 
-    if args.backend_type != 'none':
+    for i in range(num_backends):
+        backend_ifname = get_backend_ifname(args, i)
+
         # Add data interface
-        cmdline += ' -device %s,netdev=data%d,mac=00:AA:BB:CC:%02x:01' \
-                    % (args.frontend_type, args.idx, args.idx)
-        if args.frontend_type in ['virtio-net-pci', 'e1000-paravirt']:
+        cmdline += ' -device %s,netdev=data%d,mac=00:AA:BB:CC:%02x:%02x' \
+                    % (args.frontend_type[i], args.idx[i], mgmt_idx, args.idx[i])
+        if args.frontend_type[i] in ['virtio-net-pci', 'e1000-paravirt']:
             cmdline += ',ioeventfd=%s' % ('on' if args.ioeventfd else 'off',)
-        if args.frontend_type in ['e1000', 'e1000-paravirt']:
+        if args.frontend_type[i] in ['e1000', 'e1000-paravirt']:
             cmdline += ',mitigation=%s' % ('on' if args.interrupt_mitigation else 'off',)
-        if args.frontend_type in ['virtio-net-pci']:
+        if args.frontend_type[i] in ['virtio-net-pci']:
             cmdline += ',mrg_rxbuf=%s' % ('on' if args.mrg_rx_bufs else 'off',)
             if args.num_queues > 1:
                 cmdline += ',mq=on,vectors=%d' % 2*args.num_queues+1
@@ -157,10 +195,10 @@ try:
                 #         ethtool -L eth0 combined args.num_queues
 
         # Add data backend
-        cmdline += ' -netdev %s,ifname=%s,id=data%d' % (args.backend_type, backend_ifname, args.idx )
-        if args.frontend_type in ['virtio-net-pci'] and args.backend_type in ['tap']:
+        cmdline += ' -netdev %s,ifname=%s,id=data%d' % (args.backend_type[i], backend_ifname, args.idx[i])
+        if args.frontend_type[i] in ['virtio-net-pci'] and args.backend_type[i] in ['tap']:
             cmdline += ',vhost=%s' % ('on' if args.vhost_net else 'off',)
-        if args.backend_type in ['tap']:
+        if args.backend_type[i] in ['tap']:
             cmdline += ',script=no,downscript=no'
             if args.num_queues > 1:
                 cmdline += ',queues=%d' % args.num_queues
@@ -169,33 +207,39 @@ try:
         print(cmdline)
         exit(0)
 
-    if args.backend_type == 'tap':
-        if args.bridging:
-            try:
-                cmdexe('sudo brctl addbr br%02d' % args.br_idx, False)
-                cmdexe('sudo ip link set br%02d up' % args.br_idx)
-            except:
-                # They bridge may already exist
-                pass
+    for i in range(num_backends):
+        backend_ifname = get_backend_ifname(args, i)
 
-        cmdexe('sudo ip tuntap add mode tap name %s' % backend_ifname)
-        cmdexe('sudo ip link set %s up' % backend_ifname)
+        if args.backend_type[i] == 'tap':
+            if args.bridging:
+                try:
+                    cmdexe('sudo brctl addbr br%02d' % args.br_idx[i], False)
+                    cmdexe('sudo ip link set br%02d up' % args.br_idx[i])
+                except:
+                    # They bridge may already exist
+                    pass
 
-        if args.bridging:
-            cmdexe('sudo brctl addif br%02d %s' % (args.br_idx, backend_ifname))
+            cmdexe('sudo ip tuntap add mode tap name %s' % backend_ifname)
+            cmdexe('sudo ip link set %s up' % backend_ifname)
+
+            if args.bridging:
+                cmdexe('sudo brctl addif br%02d %s' % (args.br_idx[i], backend_ifname))
 
     try:
         subprocess.check_call(cmdline, shell=True)
     except:
         print('QEMU terminated with an exception')
 
-    if args.backend_type == 'tap':
-        cmdexe('sudo ip link set %s down' % backend_ifname)
+    for i in range(num_backends):
+        backend_ifname = get_backend_ifname(args, i)
 
-        if args.bridging:
-            cmdexe('sudo brctl delif br%02d %s' % (args.br_idx, backend_ifname))
+        if args.backend_type[i] == 'tap':
+            cmdexe('sudo ip link set %s down' % backend_ifname)
 
-        cmdexe('sudo ip tuntap del mode tap name %s' % backend_ifname)
+            if args.bridging:
+                cmdexe('sudo brctl delif br%02d %s' % (args.br_idx[i], backend_ifname))
+
+            cmdexe('sudo ip tuntap del mode tap name %s' % backend_ifname)
 
 except subprocess.CalledProcessError as e:
     print(e.output)
