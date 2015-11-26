@@ -91,6 +91,8 @@ argparser.add_argument('--console-tcp', action='store_true',
 argparser.add_argument('--console-base-port', type = int,
                        help = "Base TCP port to redirect serial console to",
                        default = 30000)
+argparser.add_argument('--no-mgmt', action='store_false', dest='mgmtnet',
+                       help = "Don't add management network")
 
 args = argparser.parse_args()
 
@@ -172,10 +174,11 @@ try:
         cmdline += ' -serial tcp:127.0.0.1:%d,server,nowait' %\
                      (args.console_base_port + mgmt_idx)
 
-    # Add management interface with netuser backend
-    cmdline += ' -device e1000,netdev=mgmt,mac=00:AA:BB:CC:%02x:99' % mgmt_idx
-    cmdline += ' -netdev user,id=mgmt,hostfwd=tcp::%d-:22' \
-                % (args.ssh_base_port + mgmt_idx)
+    if args.mgmtnet:
+        # Add management interface with netuser backend
+        cmdline += ' -device e1000,netdev=mgmt,mac=00:AA:BB:CC:%02x:99' % mgmt_idx
+        cmdline += ' -netdev user,id=mgmt,hostfwd=tcp::%d-:22' \
+                    % (args.ssh_base_port + mgmt_idx)
 
     for i in range(num_backends):
         backend_ifname = get_backend_ifname(args, i)
