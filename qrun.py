@@ -168,7 +168,7 @@ try:
 
     if args.install_from_iso:
         cmdline += ' -cdrom %s' % args.install_from_iso
-        cmdline += ' boot order=dc'
+        cmdline += ' -boot order=dc'
 
     if args.console_tcp:
         cmdline += ' -serial tcp:127.0.0.1:%d,server,nowait' %\
