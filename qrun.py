@@ -42,12 +42,16 @@ argparser.add_argument('-i', '--image',
 argparser.add_argument('--num-cpus',
                        help = "Number of CPUs ofthe VM",
                        type = int, default = 2)
-argparser.add_argument('-m', '--memory',
+argparser.add_argument('--memory',
                        help = "Size of the VM memory (e.g. 256M, 2G)",
                        type = str, default = '2G')
 argparser.add_argument('--temp', dest = 'temp_mode',
                        action='store_true',
                        help = "Enable non persistent disk mode")
+argparser.add_argument('-m', '--mgmt-idx', type = int,
+                       help = "An index for the VM, to be used for the "
+                              "management port",
+                       default = 1)
 argparser.add_argument('-n', '--idx', action='append',
                        help = "Port index to be used with TAP and VALE",
                        default = [])
@@ -131,8 +135,6 @@ while len(args.backend_type) < num_backends:
 while len(args.frontend_type) < num_backends:
     args.frontend_type.append('e1000')
 
-mgmt_idx = args.idx[0] if len(args.idx) > 0 else 1
-
 #print(args)
 
 if args.install_from_iso:
@@ -172,20 +174,20 @@ try:
 
     if args.console_tcp:
         cmdline += ' -serial tcp:127.0.0.1:%d,server,nowait' %\
-                     (args.console_base_port + mgmt_idx)
+                     (args.console_base_port + args.mgmt_idx)
 
     if args.mgmtnet:
         # Add management interface with netuser backend
-        cmdline += ' -device e1000,netdev=mgmt,mac=00:AA:BB:CC:%02x:99' % mgmt_idx
+        cmdline += ' -device e1000,netdev=mgmt,mac=00:AA:BB:CC:%02x:99' % args.mgmt_idx
         cmdline += ' -netdev user,id=mgmt,hostfwd=tcp::%d-:22' \
-                    % (args.ssh_base_port + mgmt_idx)
+                    % (args.ssh_base_port + args.mgmt_idx)
 
     for i in range(num_backends):
         backend_ifname = get_backend_ifname(args, i)
 
         # Add data interface
         cmdline += ' -device %s,netdev=data%d,mac=00:AA:BB:CC:%02x:%02x' \
-                    % (args.frontend_type[i], args.idx[i], mgmt_idx, args.idx[i])
+                    % (args.frontend_type[i], args.idx[i], args.mgmt_idx, args.idx[i])
         if args.frontend_type[i] in ['virtio-net-pci', 'e1000-paravirt']:
             cmdline += ',ioeventfd=%s' % ('on' if args.ioeventfd else 'off',)
         if args.frontend_type[i] in ['e1000', 'e1000-paravirt']:
