@@ -52,6 +52,11 @@ argparser.add_argument('-m', '--mgmt-idx', type = int,
                        help = "An index for the VM, to be used for the "
                               "management port",
                        default = 1)
+argparser.add_argument('--mgmt-nic',
+                       help = "NIC model to use for mgmt", type = str,
+                       choices = ['e1000', 'virtio-net-pci', 'pcnet',
+                                  'ne2k_pci', 'rtl8139', 'e1000-paravirt'],
+                       default = 'e1000')
 argparser.add_argument('-n', '--idx', action='append',
                        help = "Port index to be used with TAP and VALE",
                        default = [])
@@ -178,7 +183,7 @@ try:
 
     if args.mgmtnet:
         # Add management interface with netuser backend
-        cmdline += ' -device e1000,netdev=mgmt,mac=00:AA:BB:CC:%02x:99' % args.mgmt_idx
+        cmdline += ' -device %s,netdev=mgmt,mac=00:AA:BB:CC:%02x:99' % (args.mgmt_nic, args.mgmt_idx)
         cmdline += ' -netdev user,id=mgmt,hostfwd=tcp::%d-:22' \
                     % (args.ssh_base_port + args.mgmt_idx)
 
