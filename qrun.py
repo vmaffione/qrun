@@ -87,6 +87,8 @@ argparser.add_argument('--num-queues',
                        type = int, default = 1)
 argparser.add_argument('--interrupt-mitigation', action='store_true',
                        help = "Enable NIC interrupt mitigation")
+argparser.add_argument('--passthrough', action='store_true',
+                       help = "Enable netmap passthrough optimization")
 argparser.add_argument('--vmpi', action='store_true',
                        help = "Add a VMPI device")
 argparser.add_argument('--kernel',
@@ -212,6 +214,9 @@ try:
             cmdline += ',script=no,downscript=no'
             if args.num_queues > 1:
                 cmdline += ',queues=%d' % args.num_queues
+        if args.backend_type[i] in ['netmap']:
+            if args.passthrough:
+                cmdline += ',passthrough=on'
 
     if args.dry_run:
         print(cmdline)
