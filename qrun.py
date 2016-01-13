@@ -71,7 +71,7 @@ argparser.add_argument('-f', '--frontend-type', action='append',
                        help = "Network frontend", type = str,
                        choices = ['e1000', 'virtio-net-pci', 'pcnet',
                                   'ne2k_pci', 'rtl8139', 'e1000-paravirt',
-                                  'ptnet'],
+                                  'ptnet-pci'],
                        default = [])
 argparser.add_argument('--no-bridging', dest='bridging', action='store_false',
                        help = "When TAP backend is used, don't attach it to a bridge")
@@ -216,7 +216,7 @@ try:
             if args.num_queues > 1:
                 cmdline += ',queues=%d' % args.num_queues
         if args.backend_type[i] in ['netmap']:
-            if args.passthrough or args.frontend_type[i] in ['ptnet']:
+            if args.passthrough or args.frontend_type[i] in ['ptnet-pci']:
                 cmdline += ',passthrough=on'
 
     if args.dry_run:
