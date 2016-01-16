@@ -128,7 +128,7 @@ num_backends = max(len(args.idx), len(args.br_idx), len(args.backend_type),
                    len(args.frontend_type))
 
 if num_backends > 0 and len(args.idx) == 0:
-    args.idx.append(1)
+    args.idx.append(args.mgmt_idx)
 while len(args.idx) < num_backends:
     args.idx.append(args.idx[-1] + 1)
 
