@@ -165,6 +165,9 @@ try:
     cmdline += ' -smp %d' % args.num_cpus
     cmdline += ' -m %s' % args.memory
 
+    if args.console_tcp:
+        args.vm_output_mode = 'none'
+
     cmdline += ' -vga std'
     if args.vm_output_mode == 'stdio':
         cmdline += ' -nographic'
