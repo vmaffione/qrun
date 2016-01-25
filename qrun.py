@@ -29,6 +29,14 @@ def get_backend_ifname(args, i):
     return args.backend_type[i] + '%d_%d' % (args.br_idx[i], args.idx[i])
 
 
+def get_backend_name(args, i):
+    if args.backend_type[i] in ['netmap', 'netmap-pipe-master',
+                                'netmap-pipe-slave']:
+        return 'netmap'
+
+    return args.backend_type[i]
+
+
 description = "Python script to launch QEMU VMs"
 epilog = "2015 Vincenzo Maffione"
 
@@ -205,6 +213,7 @@ try:
 
     for i in range(num_backends):
         backend_ifname = get_backend_ifname(args, i)
+        backend_name = get_backend_name(args, i)
 
         # Add data interface
         cmdline += ' -device %s,netdev=data%d,mac=00:AA:BB:CC:%02x:%02x' \
@@ -221,7 +230,7 @@ try:
                 #         ethtool -L eth0 combined args.num_queues
 
         # Add data backend
-        cmdline += ' -netdev %s,ifname=%s,id=data%d' % (args.backend_type[i], backend_ifname, args.idx[i])
+        cmdline += ' -netdev %s,ifname=%s,id=data%d' % (backend_name, backend_ifname, args.idx[i])
         if args.frontend_type[i] in ['virtio-net-pci'] and args.backend_type[i] in ['tap']:
             cmdline += ',vhost=%s' % ('on' if args.vhost_net else 'off',)
         if args.backend_type[i] in ['tap']:
