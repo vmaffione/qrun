@@ -14,8 +14,17 @@ def cmdexe(cmdstring, print_stderr=True):
 
 
 def get_backend_ifname(args, i):
-    if args.backend_type[i] == 'netmap':
-        return 'vale%d:%d' % (args.br_idx[i], args.idx[i])
+    if args.backend_type[i] in ['netmap', 'netmap-pipe-master',
+                                'netmap-pipe-slave']:
+        ifname = 'vale%d:%d' % (args.br_idx[i], args.idx[i])
+
+        if args.backend_type[i] == 'netmap-pipe-master':
+            return ifname + '{1'
+
+        if args.backend_type[i] == 'netmap-pipe-slave':
+            return ifname + '}1'
+
+        return ifname
 
     return args.backend_type[i] + '%d_%d' % (args.br_idx[i], args.idx[i])
 
@@ -65,7 +74,8 @@ argparser.add_argument('--br-idx', action='append',
                        type = int, default = [])
 argparser.add_argument('-b', '--backend-type', action='append',
                        help = "Network backend", type = str,
-                       choices = ['tap', 'netmap'],
+                       choices = ['tap', 'netmap', 'netmap-pipe-master',
+                                  'netmap-pipe-slave'],
                        default = [])
 argparser.add_argument('-f', '--frontend-type', action='append',
                        help = "Network frontend", type = str,
@@ -218,7 +228,7 @@ try:
             cmdline += ',script=no,downscript=no'
             if args.num_queues > 1:
                 cmdline += ',queues=%d' % args.num_queues
-        if args.backend_type[i] in ['netmap']:
+        if args.backend_type[i] in ['netmap', 'netmap-pipe-master', 'netmap-pipe-slave']:
             if args.passthrough or args.frontend_type[i] in ['ptnet-pci']:
                 cmdline += ',passthrough=on'
 
