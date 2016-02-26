@@ -16,7 +16,10 @@ def cmdexe(cmdstring, print_stderr=True):
 def get_backend_ifname(args, i):
     if args.backend_type[i] in ['netmap', 'netmap-pipe-master',
                                 'netmap-pipe-slave']:
-        ifname = 'vale%d:%d' % (args.br_idx[i], args.idx[i])
+        if args.netmap[i] == 'vale':
+            ifname = 'vale%d:%d' % (args.br_idx[i], args.idx[i])
+        else:
+            ifname = args.netmap[i]
 
         if args.backend_type[i] == 'netmap-pipe-master':
             return ifname + '{1'
@@ -91,6 +94,9 @@ argparser.add_argument('-f', '--frontend-type', action='append',
                                   'ne2k_pci', 'rtl8139', 'e1000-paravirt',
                                   'ptnet-pci'],
                        default = [])
+argparser.add_argument('--netmap', action='append',
+                       help = "Name of netmap port to be nm_open()ed", type = str,
+                       default = [])
 argparser.add_argument('--no-bridging', dest='bridging', action='store_false',
                        help = "When TAP backend is used, don't attach it to a bridge")
 argparser.add_argument('--no-kvm', dest='kvm', action='store_false',
@@ -160,6 +166,9 @@ while len(args.backend_type) < num_backends:
 
 while len(args.frontend_type) < num_backends:
     args.frontend_type.append('e1000')
+
+while len(args.netmap) < num_backends:
+    args.netmap.append('vale')
 
 #print(args)
 
