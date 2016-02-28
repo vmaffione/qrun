@@ -85,7 +85,7 @@ argparser.add_argument('--br-idx', action='append',
                        type = int, default = [])
 argparser.add_argument('-b', '--backend-type', action='append',
                        help = "Network backend", type = str,
-                       choices = ['tap', 'netmap', 'netmap-pipe-master',
+                       choices = ['nat', 'tap', 'netmap', 'netmap-pipe-master',
                                   'netmap-pipe-slave'],
                        default = [])
 argparser.add_argument('-f', '--frontend-type', action='append',
@@ -239,7 +239,10 @@ try:
                 #         ethtool -L eth0 combined args.num_queues
 
         # Add data backend
-        cmdline += ' -netdev %s,ifname=%s,id=data%d' % (backend_name, backend_ifname, args.idx[i])
+        if args.backend_type[i] == 'nat':
+            cmdline += ' -netdev user,net=10.79.%d.0/24,id=data%d' % (args.idx[i], args.idx[i])
+        else:
+            cmdline += ' -netdev %s,ifname=%s,id=data%d' % (backend_name, backend_ifname, args.idx[i])
         if args.frontend_type[i] in ['virtio-net-pci'] and args.backend_type[i] in ['tap']:
             cmdline += ',vhost=%s' % ('on' if args.vhost_net else 'off',)
         if args.backend_type[i] in ['tap']:
