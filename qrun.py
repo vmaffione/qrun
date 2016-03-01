@@ -129,6 +129,8 @@ argparser.add_argument('--console-base-port', type = int,
                        default = 30000)
 argparser.add_argument('--no-mgmt', action='store_false', dest='mgmtnet',
                        help = "Don't add management network")
+argparser.add_argument('--device',
+                       help = "Additional device", type = str)
 
 args = argparser.parse_args()
 
@@ -252,6 +254,9 @@ try:
         if args.backend_type[i] in ['netmap', 'netmap-pipe-master', 'netmap-pipe-slave']:
             if args.passthrough or args.frontend_type[i] in ['ptnet-pci']:
                 cmdline += ',passthrough=on'
+
+    if args.device:
+        cmdline += ' -device %s' % (args.device)
 
     if args.dry_run:
         print(cmdline)
