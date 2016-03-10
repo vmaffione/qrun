@@ -236,7 +236,7 @@ try:
         if args.frontend_type[i] in ['virtio-net-pci']:
             cmdline += ',mrg_rxbuf=%s' % ('on' if args.mrg_rx_bufs else 'off',)
             if args.num_queues > 1:
-                cmdline += ',mq=on,vectors=%d' % 2*args.num_queues+1
+                cmdline += ',mq=on,vectors=%d' % (2*args.num_queues+1)
                 # enable multi-queuing into the guest using
                 #         ethtool -L eth0 combined args.num_queues
 
@@ -250,7 +250,7 @@ try:
         if args.backend_type[i] in ['tap']:
             cmdline += ',script=no,downscript=no'
             if args.num_queues > 1:
-                cmdline += ',queues=%d' % args.num_queues
+                cmdline += ',queues=%d' % (args.num_queues)
         if args.backend_type[i] in ['netmap', 'netmap-pipe-master', 'netmap-pipe-slave']:
             if args.passthrough or args.frontend_type[i] in ['ptnet-pci']:
                 cmdline += ',passthrough=on'
@@ -274,7 +274,10 @@ try:
                     # They bridge may already exist
                     pass
 
-            cmdexe('sudo ip tuntap add mode tap name %s' % backend_ifname)
+            cmd = 'sudo ip tuntap add mode tap name %s' % backend_ifname
+            if args.num_queues > 1:
+                cmd += ' multi_queue'
+            cmdexe(cmd)
             cmdexe('sudo ip link set %s up' % backend_ifname)
 
             if args.bridging:
@@ -294,7 +297,10 @@ try:
             if args.bridging:
                 cmdexe('sudo brctl delif br%02d %s' % (args.br_idx[i], backend_ifname))
 
-            cmdexe('sudo ip tuntap del mode tap name %s' % backend_ifname)
+            cmd = 'sudo ip tuntap del mode tap name %s' % backend_ifname
+            if args.num_queues > 1:
+                cmd += ' multi_queue'
+            cmdexe(cmd)
 
 except subprocess.CalledProcessError as e:
     print(e.output)
