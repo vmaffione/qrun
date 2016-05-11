@@ -37,6 +37,9 @@ def get_backend_name(args, i):
                                 'netmap-pipe-slave']:
         return 'netmap'
 
+    if args.backend_type[i] in ['socket-listen', 'socket-connect']:
+        return 'socket'
+
     return args.backend_type[i]
 
 
@@ -86,7 +89,8 @@ argparser.add_argument('--br-idx', action='append',
 argparser.add_argument('-b', '--backend-type', action='append',
                        help = "Network backend", type = str,
                        choices = ['nat', 'tap', 'netmap', 'netmap-pipe-master',
-                                  'netmap-pipe-slave'],
+                                  'netmap-pipe-slave', 'socket-listen',
+                                  'socket-connect'],
                        default = [])
 argparser.add_argument('-f', '--frontend-type', action='append',
                        help = "Network frontend", type = str,
@@ -243,6 +247,9 @@ try:
         # Add data backend
         if args.backend_type[i] == 'nat':
             cmdline += ' -netdev user,net=10.79.%d.0/24,id=data%d' % (args.idx[i], args.idx[i])
+        elif args.backend_type[i] in ['socket-listen', 'socket-connect']:
+            cs = args.backend_type[i][7:]
+            cmdline += ' -netdev socket,%s=127.0.0.1:%d,id=data%d' % (cs, 4000 + args.idx[i], args.idx[i])
         else:
             cmdline += ' -netdev %s,ifname=%s,id=data%d' % (backend_name, backend_ifname, args.idx[i])
         if args.frontend_type[i] in ['virtio-net-pci'] and args.backend_type[i] in ['tap']:
