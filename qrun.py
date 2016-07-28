@@ -176,10 +176,14 @@ argparser.add_argument('--initramfs',
                        help = "Path to the initramfs image to be used by the "
                               "VM (direct boot mode)", type = str)
 argparser.add_argument('--console-tcp', action='store_true',
-                       help = "Redirect serial console to TCP port")
+                       help = "Redirect serial console to TCP port. "
+                              "Deprecated, use --console-file instead")
 argparser.add_argument('--console-base-port', type = int,
                        help = "Base TCP port to redirect serial console to",
                        default = 30000)
+argparser.add_argument('--console-file', type = str,
+                       help = "Redirect serial console to local file. "
+                              "Deprecated, use --console-file instead")
 argparser.add_argument('--no-mgmt', action='store_false', dest='mgmtnet',
                        help = "Don't add management network")
 argparser.add_argument('--hostfwd', type = str, action='append', default = [],
@@ -273,7 +277,7 @@ try:
     cmdline += ' -smp %d' % args.num_cpus
     cmdline += ' -m %s' % args.memory
 
-    if args.console_tcp:
+    if args.console_tcp or args.console_file:
         args.vm_output_mode = 'none'
 
     cmdline += ' -vga std'
@@ -291,7 +295,9 @@ try:
         cmdline += ' -cdrom %s' % args.install_from_iso
         cmdline += ' -boot order=dc'
 
-    if args.console_tcp:
+    if args.console_file:
+        cmdline += ' -serial file:%s' % (args.console_file)
+    elif args.console_tcp:
         cmdline += ' -serial tcp:127.0.0.1:%d,server,nowait' %\
                      (args.console_base_port + args.mgmt_idx)
 
