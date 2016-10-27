@@ -138,7 +138,7 @@ argparser.add_argument('--device',
 
 args = argparser.parse_args()
 
-# Validate append integer parameters
+# Validate append parameters
 for i in range(len(args.idx)):
     try:
         idx = int(args.idx[i])
@@ -264,6 +264,9 @@ try:
 
     if args.device:
         cmdline += ' -device %s' % (args.device)
+
+    if args.vmpi:
+        cmdline += ' -device virtio-mpi-pci'
 
     if args.dry_run:
         print(cmdline)
