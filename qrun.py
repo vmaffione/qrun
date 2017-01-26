@@ -135,6 +135,8 @@ argparser.add_argument('--no-mgmt', action='store_false', dest='mgmtnet',
                        help = "Don't add management network")
 argparser.add_argument('--device',
                        help = "Additional device", type = str)
+argparser.add_argument('--hostfwd', type = str, action='append', default = [],
+                       help='Additional port forwarding <HOSTPORT:VMPORT>')
 
 args = argparser.parse_args()
 
@@ -225,6 +227,14 @@ try:
         cmdline += ' -device %s,netdev=mgmt,mac=00:AA:BB:CC:%02x:99' % (args.mgmt_nic, args.mgmt_idx)
         cmdline += ' -netdev user,id=mgmt,hostfwd=tcp::%d-:22' \
                     % (args.ssh_base_port + args.mgmt_idx)
+        for hf in args.hostfwd:
+            m = re.match(r'(\d+):(\d+)', hf)
+            if m == None:
+                print('Invalid hostfwd "%s"' % hf)
+            else:
+                hostport = int(m.group(1))
+                guestport = int(m.group(2))
+                cmdline += ',hostfwd=tcp::%d-:%d' % (hostport, guestport)
 
     for i in range(num_backends):
         backend_ifname = get_backend_ifname(args, i)
