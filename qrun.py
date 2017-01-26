@@ -137,6 +137,8 @@ argparser.add_argument('--device',
                        help = "Additional device", type = str)
 argparser.add_argument('--hostfwd', type = str, action='append', default = [],
                        help='Additional port forwarding <HOSTPORT:VMPORT>')
+argparser.add_argument('--nested-kvm', action='store_true',
+                       help = "Enable nested KVM for the VM")
 
 args = argparser.parse_args()
 
@@ -177,6 +179,25 @@ while len(args.frontend_type) < num_backends:
 
 while len(args.netmap) < num_backends:
     args.netmap.append('vale')
+
+if args.kvm and not os.path.isdir('/sys/module/kvm_intel') and not os.path.isdir('/sys/module/kvm_amd'):
+        print('KVM is not present')
+        quit()
+
+if args.nested_kvm:
+    try:
+        en_kvm = open('/sys/module/kvm_intel/parameters/nested', 'r').read().strip().upper()
+    except:
+        en_kvm = 'N'
+
+    try:
+        en_amd = open('/sys/module/kvm_amd/parameters/nested', 'r').read().strip().upper()
+    except:
+        en_amd = 'N'
+
+    if en_kvm != 'Y' and en_amd != 'Y':
+        print('Nested KVM is not enabled')
+        quit()
 
 #print(args)
 
@@ -277,6 +298,9 @@ try:
 
     if args.vmpi:
         cmdline += ' -device virtio-mpi-pci'
+
+    if args.nested_kvm:
+        cmdline += ' -cpu host'
 
     if args.dry_run:
         print(cmdline)
