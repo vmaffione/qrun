@@ -50,6 +50,20 @@ def sysfs_write(filename, s):
     sysf.close()
 
 
+# Get the name of the current driver bound to @pcidev
+def pci_driver_name(pcidev):
+    try:
+        cwd = os.getcwd()
+        os.chdir("/sys/bus/pci/devices/0000:%s/driver" % pcidev)
+        dricwd = os.getcwd()
+        os.chdir(cwd)
+    except:
+        print("Cannot find PCI device %s on the PCI subsystem" % pcidev)
+        quit(1)
+
+    return os.path.basename(os.path.normpath(dricwd))
+
+
 # Unbind the given host PCI device from its current driver
 # and bind it to the stub PCI driver
 def pci_driver_unbind(pcidev):
@@ -90,6 +104,15 @@ def pci_driver_unbind(pcidev):
 
     print("PCI device with vendor %s and devid %s unbound from "\
             "its driver" % (vendor, devid))
+
+
+def pci_driver_rebind(pcidev, driver):
+    try:
+        sysfs_write("/sys/bus/pci/drivers/%s/bind" % driver,
+                    "0000:%s" % pcidev)
+    except Exception as e:
+        print(e)
+        print("Failed to rebind PCI device %s to driver %s" % (pcidev, driver))
 
 
 description = "Python script to launch QEMU VMs"
@@ -360,6 +383,10 @@ try:
         if m is None:
             print("Invalid PCI device identifier '%s'" % args.pci_passthrough)
             quit(1)
+
+        # Get the name of current driver
+        pci_driver = pci_driver_name(args.pci_passthrough)
+
         # Unbind device from current driver
         pci_driver_unbind(args.pci_passthrough)
         cmdline += ' -device pci-assign,host=%s' % args.pci_passthrough
@@ -413,6 +440,9 @@ try:
             if args.num_queues > 1:
                 cmd += ' multi_queue'
             cmdexe(cmd)
+
+    if args.pci_passthrough:
+        pci_driver_rebind(args.pci_passthrough, pci_driver)
 
 except subprocess.CalledProcessError as e:
     print(e.output)
