@@ -162,7 +162,7 @@ argparser.add_argument('-b', '--backend-type', action='append',
                        help = "Network backend", type = str,
                        choices = ['nat', 'tap', 'netmap', 'netmap-pipe-master',
                                   'netmap-pipe-slave', 'socket-listen',
-                                  'socket-connect'],
+                                  'socket-connect', 'vhost-user'],
                        default = [])
 argparser.add_argument('-f', '--frontend-type', action='append',
                        help = "Network frontend", type = str,
@@ -339,17 +339,29 @@ try:
                 guestport = int(m.group(2))
                 cmdline += ',hostfwd=tcp::%d-:%d' % (hostport, guestport)
 
+    # When vhost-user is used, add memory backend file object
+    for i in range(num_backends):
+        if args.backend_type[i] == 'vhost-user':
+            cmdline += ' -numa node,memdev=mem0'\
+                       ' -object memory-backend-file,id=mem0,size=%s,'\
+                       'mem-path=/dev/hugepages,share=on' % args.memory
+            break
+
     for i in range(num_backends):
         backend_ifname = get_backend_ifname(args, i)
         backend_name = get_backend_name(args, i)
+
+        vars_dict = {'idx': args.idx[i], 'vmid': args.mgmt_idx}
 
         # Add data interface
         cmdline += ' -device %s,netdev=data%d,mac=00:AA:BB:CC:%02x:%02x' \
                     % (args.frontend_type[i], args.idx[i], args.mgmt_idx, args.idx[i])
         if args.frontend_type[i] in ['virtio-net-pci', 'e1000-paravirt']:
             cmdline += ',ioeventfd=%s' % ('on' if args.ioeventfd else 'off',)
+
         if args.frontend_type[i] in ['e1000', 'e1000-paravirt']:
             cmdline += ',mitigation=%s' % ('on' if args.interrupt_mitigation else 'off',)
+
         if args.frontend_type[i] in ['virtio-net-pci']:
             cmdline += ',mrg_rxbuf=%s' % ('on' if args.mrg_rx_bufs else 'off',)
             if args.num_queues > 1:
@@ -360,20 +372,35 @@ try:
         # Add data backend
         if args.backend_type[i] == 'nat':
             cmdline += ' -netdev user,net=10.79.%d.0/24,id=data%d' % (args.idx[i], args.idx[i])
+
         elif args.backend_type[i] in ['socket-listen', 'socket-connect']:
             cs = args.backend_type[i][7:]
             cmdline += ' -netdev socket,%s=127.0.0.1:%d,id=data%d' % (cs, 4000 + args.idx[i], args.idx[i])
+
+        elif args.backend_type[i] == 'vhost-user':
+            if args.frontend_type[i] != 'virtio-net-pci':
+                print("vhost-user backend requires virtio-net-pci frontend")
+                quit(1)
+            cmdline += ' -chardev socket,id=char%(idx)d,path=/var/run/vm%(vmid)d-%(idx)d.socket,server'\
+                        ' -netdev type=vhost-user,id=data%(idx)d,chardev=char%(idx)s'\
+                        % vars_dict
+
         else:
             cmdline += ' -netdev %s,ifname=%s,id=data%d' % (backend_name, backend_ifname, args.idx[i])
+
         if args.frontend_type[i] in ['virtio-net-pci'] and args.backend_type[i] in ['tap']:
             cmdline += ',vhost=%s' % ('on' if args.vhost_net else 'off',)
+
         if args.backend_type[i] in ['tap']:
             cmdline += ',script=no,downscript=no'
             if args.num_queues > 1:
                 cmdline += ',queues=%d' % (args.num_queues)
+
         if args.backend_type[i] in ['netmap', 'netmap-pipe-master', 'netmap-pipe-slave']:
             if args.passthrough or args.frontend_type[i] in ['ptnet-pci']:
                 cmdline += ',passthrough=on'
+
+        del vars_dict
 
     if args.device:
         cmdline += ' -device %s' % (args.device)
