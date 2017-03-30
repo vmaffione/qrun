@@ -43,6 +43,55 @@ def get_backend_name(args, i):
     return args.backend_type[i]
 
 
+def sysfs_write(filename, s):
+    print("echo \"%s\" > %s" % (s, filename))
+    sysf = open(filename, 'w')
+    sysf.write(s)
+    sysf.close()
+
+
+# Unbind the given host PCI device from its current driver
+# and bind it to the stub PCI driver
+def pci_driver_unbind(pcidev):
+    try:
+        out = subprocess.check_output(["lspci", "-n"])
+        out = out.decode('ascii').split('\n')
+    except:
+        print("Failed to execute 'lspci' command")
+        quit(1)
+
+    out = [elem.strip() for elem in out]
+    vendor = None
+    devid = None
+    for elem in out:
+        columns = elem.split()
+        if len(columns) >= 3 and columns[0] == pcidev:
+            # Found
+            vendor, devid = columns[2].split(":")
+            break
+
+    if vendor is None or devid is None:
+        print("Cannot find PCI device %s on the PCI subsystem" % pcidev)
+        quit(1)
+
+    cmdexe("sudo modprobe pci_stub")
+
+    try:
+        sysfs_write("/sys/bus/pci/drivers/pci-stub/new_id",
+                    "%s %s" % (vendor, devid))
+        sysfs_write("/sys/bus/pci/devices/0000:%s/driver/unbind" % pcidev,
+                    "0000:%s" % pcidev)
+        sysfs_write("/sys/bus/pci/drivers/pci-stub/bind",
+                    "0000:%s" % pcidev)
+    except Exception as e:
+        print(e)
+        print("Failed to unbind PCI device %s from its driver" % pcidev)
+        quit(1)
+
+    print("PCI device with vendor %s and devid %s unbound from "\
+            "its driver" % (vendor, devid))
+
+
 description = "Python script to launch QEMU VMs"
 epilog = "2015 Vincenzo Maffione"
 
@@ -300,10 +349,13 @@ try:
         cmdline += ' -device %s' % (args.device)
 
     if args.pci_passthrough:
-        m = re.match(r'^[0-9a-fA-F]{2}:[0-9a-fA-F]{2}.[0-9a-fA-F]$', args.pci_passthrough)
+        # PCI device must be in the form xx:yy.z, with exadecimal digits
+        m = re.match(r'^[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-9a-fA-F]$', args.pci_passthrough)
         if m is None:
             print("Invalid PCI device identifier '%s'" % args.pci_passthrough)
             quit(1)
+        # Unbind device from current driver
+        pci_driver_unbind(args.pci_passthrough)
         cmdline += ' -device pci-assign,host=%s' % args.pci_passthrough
 
     if args.vmpi:
