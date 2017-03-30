@@ -135,7 +135,7 @@ argparser.add_argument('-p', '--ssh-base-port',
 argparser.add_argument('-i', '--image',
                        help = "Path to the VM disk image", type = str)
 argparser.add_argument('--num-cpus',
-                       help = "Number of CPUs ofthe VM",
+                       help = "Number of CPUs for the VM",
                        type = int, default = 2)
 argparser.add_argument('--memory',
                        help = "Size of the VM memory (e.g. 256M, 2G)",
@@ -190,8 +190,6 @@ argparser.add_argument('--interrupt-mitigation', action='store_true',
                        help = "Enable NIC interrupt mitigation")
 argparser.add_argument('--passthrough', action='store_true',
                        help = "Enable netmap passthrough optimization")
-argparser.add_argument('--vmpi', action='store_true',
-                       help = "Add a VMPI device")
 argparser.add_argument('--kernel',
                        help = "Path to the kernel to be used by the VM "
                               "(direct boot mode)", type = str)
@@ -393,9 +391,6 @@ try:
         # Unbind device from current driver
         pci_driver_unbind(args.pci_passthrough)
         cmdline += ' -device pci-assign,host=%s' % args.pci_passthrough
-
-    if args.vmpi:
-        cmdline += ' -device virtio-mpi-pci'
 
     if args.nested_kvm:
         cmdline += ' -cpu host'
