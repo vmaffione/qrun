@@ -133,12 +133,15 @@ argparser.add_argument('--console-base-port', type = int,
                        default = 30000)
 argparser.add_argument('--no-mgmt', action='store_false', dest='mgmtnet',
                        help = "Don't add management network")
-argparser.add_argument('--device',
-                       help = "Additional device", type = str)
 argparser.add_argument('--hostfwd', type = str, action='append', default = [],
                        help='Additional port forwarding <HOSTPORT:VMPORT>')
 argparser.add_argument('--nested-kvm', action='store_true',
                        help = "Enable nested KVM for the VM")
+argparser.add_argument('--device',
+                       help = "Additional device (can be anything)", type = str)
+argparser.add_argument('--pci-passthrough',
+                       help = "Passthrough an host PCI device xx:yy.z to the VM",
+                       type = str)
 
 args = argparser.parse_args()
 
@@ -182,7 +185,7 @@ while len(args.netmap) < num_backends:
 
 if args.kvm and not os.path.isdir('/sys/module/kvm_intel') and not os.path.isdir('/sys/module/kvm_amd'):
         print('KVM is not present')
-        quit()
+        quit(1)
 
 if args.nested_kvm:
     try:
@@ -197,7 +200,7 @@ if args.nested_kvm:
 
     if en_kvm != 'Y' and en_amd != 'Y':
         print('Nested KVM is not enabled')
-        quit()
+        quit(1)
 
 #print(args)
 
@@ -296,6 +299,13 @@ try:
     if args.device:
         cmdline += ' -device %s' % (args.device)
 
+    if args.pci_passthrough:
+        m = re.match(r'^[0-9a-fA-F]{2}:[0-9a-fA-F]{2}.[0-9a-fA-F]$', args.pci_passthrough)
+        if m is None:
+            print("Invalid PCI device identifier '%s'" % args.pci_passthrough)
+            quit(1)
+        cmdline += ' -device pci-assign,host=%s' % args.pci_passthrough
+
     if args.vmpi:
         cmdline += ' -device virtio-mpi-pci'
 
@@ -304,7 +314,7 @@ try:
 
     if args.dry_run:
         print(cmdline)
-        exit(0)
+        quit(1)
 
     for i in range(num_backends):
         backend_ifname = get_backend_ifname(args, i)
