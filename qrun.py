@@ -214,7 +214,10 @@ argparser.add_argument('--hostfwd', type = str, action='append', default = [],
 argparser.add_argument('--nested-kvm', action='store_true',
                        help = "Enable nested KVM for the VM")
 argparser.add_argument('--device',
-                       help = "Additional device (can be anything)", type = str)
+                       help = "Additional device", type = str)
+argparser.add_argument('--plus',
+                       help = "Additional command line arguments (can be anything)",
+                       type = str)
 argparser.add_argument('--pci-passthrough',
                        help = "Passthrough an host PCI device xx:yy.z to the VM",
                        type = str)
@@ -396,6 +399,9 @@ try:
 
     if args.nested_kvm:
         cmdline += ' -cpu host'
+
+    if args.plus:
+        cmdline += ' %s' % args.plus
 
     if args.dry_run:
         print(cmdline)
