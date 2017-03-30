@@ -351,11 +351,12 @@ try:
         backend_ifname = get_backend_ifname(args, i)
         backend_name = get_backend_name(args, i)
 
-        vars_dict = {'idx': args.idx[i], 'vmid': args.mgmt_idx}
+        vars_dict = {'idx': args.idx[i], 'vmid': args.mgmt_idx,
+                     'fe': args.frontend_type[i]}
 
         # Add data interface
-        cmdline += ' -device %s,netdev=data%d,mac=00:AA:BB:CC:%02x:%02x' \
-                    % (args.frontend_type[i], args.idx[i], args.mgmt_idx, args.idx[i])
+        cmdline += ' -device %(fe)s,netdev=data%(idx)d,mac=00:AA:BB:CC:%(vmid)02x:%(idx)02x'\
+                        % vars_dict
         if args.frontend_type[i] in ['virtio-net-pci', 'e1000-paravirt']:
             cmdline += ',ioeventfd=%s' % ('on' if args.ioeventfd else 'off',)
 
@@ -365,13 +366,13 @@ try:
         if args.frontend_type[i] in ['virtio-net-pci']:
             cmdline += ',mrg_rxbuf=%s' % ('on' if args.mrg_rx_bufs else 'off',)
             if args.num_queues > 1:
-                cmdline += ',mq=on,vectors=%d' % (2*args.num_queues+1)
+                cmdline += ',mq=on,vectors=%d' % (2 * args.num_queues + 1)
                 # enable multi-queuing into the guest using
                 #         ethtool -L eth0 combined args.num_queues
 
         # Add data backend
         if args.backend_type[i] == 'nat':
-            cmdline += ' -netdev user,net=10.79.%d.0/24,id=data%d' % (args.idx[i], args.idx[i])
+            cmdline += ' -netdev user,net=10.79.%(idx)d.0/24,id=data%(idx)d' % vars_dict
 
         elif args.backend_type[i] in ['socket-listen', 'socket-connect']:
             cs = args.backend_type[i][7:]
