@@ -176,6 +176,9 @@ argparser.add_argument('--netmap', action='append',
 argparser.add_argument('--unix-socket', action='append',
                        help = "Name of the unix socket to be used with vhost-user backend",
                        type = str, default = [])
+argparser.add_argument('--no-unix-server', dest='unix_server', action='store_false',
+                       help = "When vhost-user is used, act as an unix socket"\
+                                " client rather than an unix socket server")
 argparser.add_argument('--no-bridging', dest='bridging', action='store_false',
                        help = "When TAP backend is used, don't attach it to a bridge")
 argparser.add_argument('--no-kvm', dest='kvm', action='store_false',
@@ -392,9 +395,12 @@ try:
             else:
                 vars_dict['upath'] = '/var/run/vm%(vmid)d-%(idx)d.socket' % vars_dict
 
-            cmdline += ' -chardev socket,id=char%(idx)d,path=%(upath)s,server'\
-                        ' -netdev type=vhost-user,id=data%(idx)d,chardev=char%(idx)s'\
+            cmdline += ' -netdev type=vhost-user,id=data%(idx)d,chardev=char%(idx)s'\
+                       ' -chardev socket,id=char%(idx)d,path=%(upath)s'\
                         % vars_dict
+
+            if args.unix_server:
+                cmdline += ",server"
 
         else:
             cmdline += ' -netdev %s,ifname=%s,id=data%d' % (backend_name, backend_ifname, args.idx[i])
