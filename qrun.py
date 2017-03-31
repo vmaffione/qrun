@@ -173,6 +173,9 @@ argparser.add_argument('-f', '--frontend-type', action='append',
 argparser.add_argument('--netmap', action='append',
                        help = "Name of netmap port to be nm_open()ed", type = str,
                        default = [])
+argparser.add_argument('--unix-socket', action='append',
+                       help = "Name of the unix socket to be used with vhost-user backend",
+                       type = str, default = [])
 argparser.add_argument('--no-bridging', dest='bridging', action='store_false',
                        help = "When TAP backend is used, don't attach it to a bridge")
 argparser.add_argument('--no-kvm', dest='kvm', action='store_false',
@@ -382,7 +385,14 @@ try:
             if args.frontend_type[i] != 'virtio-net-pci':
                 print("vhost-user backend requires virtio-net-pci frontend")
                 quit(1)
-            cmdline += ' -chardev socket,id=char%(idx)d,path=/var/run/vm%(vmid)d-%(idx)d.socket,server'\
+
+            if len(args.unix_socket) > 0:
+                vars_dict['upath'] = args.unix_socket[0]
+                args.unix_socket.pop(0)
+            else:
+                vars_dict['upath'] = '/var/run/vm%(vmid)d-%(idx)d.socket' % vars_dict
+
+            cmdline += ' -chardev socket,id=char%(idx)d,path=%(upath)s,server'\
                         ' -netdev type=vhost-user,id=data%(idx)d,chardev=char%(idx)s'\
                         % vars_dict
 
