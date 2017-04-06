@@ -58,15 +58,14 @@ def pci_driver_name(pcidev):
         dricwd = os.getcwd()
         os.chdir(cwd)
     except:
-        print("Cannot find PCI device %s on the PCI subsystem" % pcidev)
-        quit(1)
+        return "vfio-pci"
 
     return os.path.basename(os.path.normpath(dricwd))
 
 
 # Unbind the given host PCI device from its current driver
-# and bind it to the stub PCI driver
-def pci_driver_unbind(pcidev):
+# and bind it to a new driver
+def pci_driver_rebind(pcidev, newdr = "vfio-pci"):
     try:
         out = subprocess.check_output(["lspci", "-n"])
         out = out.decode('ascii').split('\n')
@@ -88,31 +87,26 @@ def pci_driver_unbind(pcidev):
         print("Cannot find PCI device %s on the PCI subsystem" % pcidev)
         quit(1)
 
-    cmdexe("sudo modprobe pci_stub")
+    cmdexe("sudo modprobe vfio")
+    cmdexe("sudo modprobe vfio_pci")
+    cmdexe("sudo modprobe vfio_virqfd")
 
     try:
-        sysfs_write("/sys/bus/pci/drivers/pci-stub/new_id",
-                    "%s %s" % (vendor, devid))
         sysfs_write("/sys/bus/pci/devices/0000:%s/driver/unbind" % pcidev,
                     "0000:%s" % pcidev)
-        sysfs_write("/sys/bus/pci/drivers/pci-stub/bind",
-                    "0000:%s" % pcidev)
     except Exception as e:
-        print(e)
-        print("Failed to unbind PCI device %s from its driver" % pcidev)
+        print("Device %s not bound to any driver" % pcidev)
+
+    try:
+        sysfs_write("/sys/bus/pci/drivers/%s/new_id" % newdr,
+                    "%s %s" % (vendor, devid))
+    except Exception as e:
+        print("Failed to bind vendor/devid %s:%s to driver %s" \
+                % (vendor, devid, newdr))
         quit(1)
 
     print("PCI device with vendor %s and devid %s unbound from "\
-            "its driver" % (vendor, devid))
-
-
-def pci_driver_rebind(pcidev, driver):
-    try:
-        sysfs_write("/sys/bus/pci/drivers/%s/bind" % driver,
-                    "0000:%s" % pcidev)
-    except Exception as e:
-        print(e)
-        print("Failed to rebind PCI device %s to driver %s" % (pcidev, driver))
+            "its driver and bound to %s" % (vendor, devid, newdr))
 
 
 description = "Python script to launch QEMU VMs"
@@ -433,8 +427,8 @@ try:
         pci_driver = pci_driver_name(args.pci_passthrough)
 
         # Unbind device from current driver
-        pci_driver_unbind(args.pci_passthrough)
-        cmdline += ' -device pci-assign,host=%s' % args.pci_passthrough
+        pci_driver_rebind(args.pci_passthrough)
+        cmdline += ' -device vfio-pci,host=%s' % args.pci_passthrough
 
     if args.nested_kvm:
         cmdline += ' -cpu host'
