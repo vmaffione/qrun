@@ -216,9 +216,8 @@ argparser.add_argument('--device',
 argparser.add_argument('--plus',
                        help = "Additional command line arguments (can be anything)",
                        type = str)
-argparser.add_argument('--pci-passthrough',
-                       help = "Passthrough an host PCI device xx:yy.z to the VM",
-                       type = str)
+argparser.add_argument('--pci-passthrough', action = 'append', default = [],
+                       help = "Passthrough an host PCI device xx:yy.z to the VM")
 
 args = argparser.parse_args()
 
@@ -416,19 +415,19 @@ try:
     if args.device:
         cmdline += ' -device %s' % (args.device)
 
-    if args.pci_passthrough:
+    for pcidev in args.pci_passthrough:
         # PCI device must be in the form xx:yy.z, with exadecimal digits
-        m = re.match(r'^[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-9a-fA-F]$', args.pci_passthrough)
+        m = re.match(r'^[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-9a-fA-F]$', pcidev)
         if m is None:
-            print("Invalid PCI device identifier '%s'" % args.pci_passthrough)
+            print("Invalid PCI device identifier '%s'" % pcidev)
             quit(1)
 
         # Get the name of current driver
-        pci_driver = pci_driver_name(args.pci_passthrough)
+        pci_driver = pci_driver_name(pcidev)
 
         # Unbind device from current driver
-        pci_driver_rebind(args.pci_passthrough)
-        cmdline += ' -device vfio-pci,host=%s' % args.pci_passthrough
+        pci_driver_rebind(pcidev)
+        cmdline += ' -device vfio-pci,host=%s' % pcidev
 
     if args.nested_kvm:
         cmdline += ' -cpu host'
@@ -480,11 +479,11 @@ try:
                 cmd += ' multi_queue'
             cmdexe(cmd)
 
-    if args.pci_passthrough:
-        pci_driver_rebind(args.pci_passthrough, pci_driver)
+    for pcidev in args.pci_passthrough:
+        pci_driver_rebind(pcidev, pci_driver)
 
 except subprocess.CalledProcessError as e:
     print(e.output)
 
-except Exception as e:
-    print(e)
+#except Exception as e:
+#    print(e)
