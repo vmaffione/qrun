@@ -51,21 +51,25 @@ def sysfs_write(filename, s):
 
 
 # Get the name of the current driver bound to @pcidev
-def pci_driver_name(pcidev):
+def pci_driver_name(args, pcidev):
     try:
         cwd = os.getcwd()
         os.chdir("/sys/bus/pci/devices/0000:%s/driver" % pcidev)
         dricwd = os.getcwd()
         os.chdir(cwd)
     except:
-        return "vfio-pci"
+        return args.pci_passthrough_driver
 
     return os.path.basename(os.path.normpath(dricwd))
 
 
 # Unbind the given host PCI device from its current driver
 # and bind it to a new driver
-def pci_driver_rebind(pcidev, newdr = "vfio-pci"):
+def pci_driver_rebind(args, pcidev, newdr = None):
+
+    if newdr is None:
+        newdr = args.pci_passthrough_driver
+
     try:
         out = subprocess.check_output(["lspci", "-n"])
         out = out.decode('ascii').split('\n')
@@ -87,9 +91,12 @@ def pci_driver_rebind(pcidev, newdr = "vfio-pci"):
         print("Cannot find PCI device %s on the PCI subsystem" % pcidev)
         quit(1)
 
-    cmdexe("sudo modprobe vfio")
-    cmdexe("sudo modprobe vfio_pci")
-    cmdexe("sudo modprobe vfio_virqfd")
+    if args.pci_passthrough_driver == 'pci-stub':
+        cmdexe("sudo modprobe pci_stub")
+    else: # vfio
+        cmdexe("sudo modprobe vfio")
+        cmdexe("sudo modprobe vfio_pci")
+        cmdexe("sudo modprobe vfio_virqfd")
 
     try:
         sysfs_write("/sys/bus/pci/devices/0000:%s/driver/unbind" % pcidev,
@@ -218,6 +225,9 @@ argparser.add_argument('--plus',
                        type = str)
 argparser.add_argument('--pci-passthrough', action = 'append', default = [],
                        help = "Passthrough an host PCI device xx:yy.z to the VM")
+argparser.add_argument('--pci-passthrough-driver',
+                       choices = ['pci-stub', 'vfio-pci'], default = 'vfio-pci',
+                       help = "Driver to use for PCI passthrough")
 
 args = argparser.parse_args()
 
@@ -423,11 +433,15 @@ try:
             quit(1)
 
         # Get the name of current driver
-        pci_driver = pci_driver_name(pcidev)
+        pci_driver = pci_driver_name(args, pcidev)
 
         # Unbind device from current driver
-        pci_driver_rebind(pcidev)
-        cmdline += ' -device vfio-pci,host=%s' % pcidev
+        pci_driver_rebind(args, pcidev)
+        if args.pci_passthrough_driver == 'pci-stub':
+            pci_pt_qemu_dev = 'pci-assign'
+        else:
+            pci_pt_qemu_dev = args.pci_passthrough_driver
+        cmdline += ' -device %s,host=%s' % (pci_pt_qemu_dev, pcidev)
 
     if args.nested_kvm:
         cmdline += ' -cpu host'
@@ -480,7 +494,7 @@ try:
             cmdexe(cmd)
 
     for pcidev in args.pci_passthrough:
-        pci_driver_rebind(pcidev, pci_driver)
+        pci_driver_rebind(args, pcidev, pci_driver)
 
 except subprocess.CalledProcessError as e:
     print(e.output)
