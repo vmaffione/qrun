@@ -91,6 +91,9 @@ def pci_driver_rebind(args, pcidev, newdr = None):
         print("Cannot find PCI device %s on the PCI subsystem" % pcidev)
         quit(1)
 
+    if args.dry_run:
+        return
+
     if args.pci_passthrough_driver == 'pci-stub':
         cmdexe("sudo modprobe pci_stub")
     else: # vfio
