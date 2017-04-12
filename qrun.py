@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Written by: Vincenzo Maffione <v.maffione@gmail.it>
+# Written by: Vincenzo Maffione <v DOT maffione AT gmail DOT com>
 
 import re
 import os
