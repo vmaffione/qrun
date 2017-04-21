@@ -1,0 +1,358 @@
+======= Prerequisites =======
+
+## Setup hugepages ##
+
+    This is needed by both Snabb and OVS-DPDK.
+
+    There are various methods: run-time allocation, sysctl,
+    boot parameters, let's go with the simpler.
+    Append 'hugepages=256' to the kernel
+    boot cmdline and reboot the system.
+    This will allocate 256 2M hugepages, and enable IOMMU (VT-d).
+    Enable VT-d in the BIOS, if present.
+
+    Check that hugepages are there:
+
+        $ grep -i huge /proc/meminfo
+
+    Check that /dev/hugepages is mounted, otherwise mount it:
+
+        # mkdir /dev/hugepages
+        # mount -t hugetlbfs nodev /dev/hugepages
+
+## Enable VT-d, if present ##
+
+This is required for PCI device passthrough to VMs, or when using
+VFIO (e.g. for DPDK).
+Snabb and uio_pci_generic (or igb_uio) won't work if VT-d is enabled.
+To enable, append 'intel_iommu=on' to the kernel boot parameter.
+
+
+
+=========== DPDK ============
+
+Warning: if you want to use DPDK inside a VM, you need to
+pass "-cpu host" to QEMU.
+
+## Build DPDK ##
+
+    $ wget http://fast.dpdk.org/rel/dpdk-16.11.tar.xz
+    $ xz -d dpdk-16.11.tar.xz
+    $ tar xvf dpdk-16.11.tar
+    $ cd dpdk-16.11
+    $ export RTE_TARGET=x86_64-native-linuxapp-gcc
+    $ export RTE_SDK=$(pwd)/
+    $ make install T=$RTE_TARGET
+
+
+## Build pktgen-dpdk ##
+
+    We assume RTE_TARGET and RTE_SDK are in the environment.
+
+    $ git clone http://dpdk.org/git/apps/pktgen-dpdk
+    $ cd pktgen-dpdk
+    $ make
+    
+
+## Bind a NIC to the DPDK user-space driver ##
+
+    Load DPDK-compatible user-space drivers and their
+    dependencies:
+
+    # modprobe vfio-pci
+    # modprobe uio
+    # modprobe uio_pci_generic
+    # insmod $RTE_SDK/$RTE_TARGET/kmod/igb_uio.ko
+    $ cd dpdk-16.11
+
+    See where each NIC is bound to (drv=XXX): kernel driver,
+    DPDK-compatible driver or nothing, and where it could
+    be bound (unused=YYY,XXX)
+
+        $ tools/dpdk-devbind.py --status
+
+    Assuming the NIC is bound to a kernel driver, let's unbound it
+    from there and bind it to the DPDK-compatible driver:
+
+        # tools/dpdk-devbind.by -b igb_uio eth1
+
+    If vfio-pci is available (VT-d), use '-b vfio-pci' rather than
+    igb_uio.
+
+
+## Run pktgen-dpdk ##
+
+    $ cd pktgen-dpdk
+
+    Command line of DPDK application is split in two parts separated by "--".
+    First part is for the DPDK EAL (abstraction layer, application
+    independent), the second part is application specific.
+    In detail:
+
+        -c 0xf    --> let the application use the first 4 cores
+        -n 4      --> tell DPDK the number of per-CPU-socket memory channels
+                       (apparently, 4 is the good for most of the motherboards)
+
+        -m "1.0, 2.1"  --> describes the mappings "core --> port"; in this case the
+	                   mapping specifies "core 1 manages port 0, cor 2 manages
+                           port 1"
+
+    # ./app/app/x86_64-native-linuxapp-gcc/pktgen -c 0xf -n4 -- -m "1.0, 2.1"
+
+    If everything goes well you are presented with an interactive shell, and
+    a display which shows the statistics and configuration info.
+    In this example we configured just one port (eth1), but more can be
+    configured.
+    Now start transmitting on port 0
+
+    Pktgen > start 0
+
+    You should see the measured packet rate in the display. Each column
+    corresponds to a different port.
+    To stop transmission on port 0:
+
+    Pktgen > stop 0
+
+
+
+=========== SNABB ============
+
+With Snabb, remember to use 'intel_iommu=on'.
+
+QEMU VM with vhost-user backend.
+Useful URL: https://github.com/snabbco/snabb/blob/master/src/program/snabbnfv/doc/getting-started.md
+
+Use the snabb QEMU fork for now; more details in the link above.
+
+########## VM-2-VM tests ############
+
+How to run two VMs with vhost-user backend and connect them through a simple virtual point-to-point
+link:
+
+    # qrun -i ~/git/vm/netmap.qcow2 -b vhost-user -f virtio-net-pci --memory 512M -o stdio -m 10 --temp
+    # qrun -i ~/git/vm/netmap.qcow2 -b vhost-user -f virtio-net-pci --memory 512M -o stdio -m 11 --temp
+
+Run the Snabb AppEngine that implements the virtual point-to-point link
+
+    # src/snabb vm2vm /var/run/vm10-10.socket /var/run/vm11-11.socket
+
+
+######## NIC-2-VM-2-NIC tests #######
+
+If you want to use the Intel82599 App, make sure iommu_intel=off, otherwise Snabb is not able
+to access the NIC, and will silently drop all the packets.
+
+Run a VM with two vhost-user backends (each corresponding to a virtio-net interface).
+
+    # qrun -i ~/git/vm/netmap.qcow2 --memory 1024M -o stdio -m 10 --temp -f virtio-net-pci -b vhost-user -n 10 -f virtio-net-pci -b vhost-user -n 11
+
+Run two Snabb AppEngines, each implementing a virtual point-to-point link between
+a vhost-user port and an 82599 NIC port.
+
+    # src/snabb vm2nic /var/run/vm10-10.socket 01:00.0
+    # src/snabb vm2nic /var/run/vm10-11.socket 01:00.1
+
+
+
+============== OVS ==============
+
+## Build OVS 2.7.0 with DPDK support ##
+
+    http://docs.openvswitch.org/en/latest/intro/install/dpdk/
+
+    $ ./configure [...] --with-dpdk=$RTE_SDK/$RTE_TARGET
+    $ make && sudo make install
+    $ # prepare OVSDB and run OVS daemon
+
+
+## Configure OVS to use DPDK ##
+
+    Run this command (persistent across reboots):
+
+        # ovs-vsctl --no-wait set Open_vSwitch . other_config:dpdk-init=true
+
+
+## Some useful commands ##
+
+    Show OVS switches and their ports:
+
+        # ovs-vsctl show
+
+    Show $BR ports and their statistics:
+
+        # ovs-ofctl dump-ports $BR
+        # ovs-ofctl dump-ports-desc $BR
+
+    Show DPDK-related OVS configuration:
+
+        # ovs-vsctl --no-wait get Open_vSwitch . other_config
+
+    Show OpenFlow rules for switch $BR, with statistics
+
+        # ovs-ofctl dump-flows $BR
+
+    Show how PMD threads are mapped to DPDK-enabled ports
+
+        # ovs-appctl dpif-netdev/pmd-rxq-show
+
+
+######### VM-2-VM experiment ########
+
+## Create an OVS instance with two DPDK vhost-user ports ##
+
+    URL: http://docs.openvswitch.org/en/latest/howto/dpdk/
+    old URL: https://software.intel.com/en-us/articles/using-open-vswitch-with-dpdk-for-inter-vm-nfv-applications
+
+    # ovs-vsctl add-br obr0 -- set bridge obr0 datapath_type=netdev
+    # ovs-vsctl add-port obr0 vhost-user1 -- set Interface vhost-user1 type=dpdkvhostuser
+    # ovs-vsctl add-port obr0 vhost-user2 -- set Interface vhost-user2 type=dpdkvhostuser
+    # ovs-ofctl add-flow obr0 in_port=1,action=output:2
+    # ovs-ofctl add-flow obr0 in_port=2,action=output:1
+
+## Run QEMU VMs attached to the vhost-user ports
+
+    # qrun -i ~/git/vm/netmap.qcow2 -m 10 -f virtio-net-pci -b vhost-user --unix-socket /var/run/openvswitch/vhost-user1 --no-unix-server --memory 512M --temp -o stdio
+    # qrun -i ~/git/vm/netmap.qcow2 -m 11 -f virtio-net-pci -b vhost-user --unix-socket /var/run/openvswitch/vhost-user2 --no-unix-server --memory 512M --temp -o stdio
+
+    Remember to destroy obr0 or stop ovs-vswitchd daemon to stop busy-wait threads.
+
+    Also pay attention to pkt-gen tests: ovs is slow with broadcast MACs (pkt-gen)
+    default, so use unicast MACs.
+
+
+######### NIC-2-VM-2-NIC experiment ########
+
+    Use uio_pci_generic as a DPDK NIC driver, vfio-pci does not work.
+    Remember to keep 'intel_iommu=off'.
+
+        # modprobe uio_pci_generic
+        # tools/dpdk-devbind.py -b uio_pci_generic 0000:01:00.0
+        # tools/dpdk-devbind.py -b uio_pci_generic 0000:01:00.1
+
+    Configure OVS (first variant):
+
+        # ovs-vsctl add-br obr1 -- set bridge obr1 datapath_type=netdev
+        # ovs-vsctl add-port obr1 dpdk-p1 -- set Interface dpdk-p1 type=dpdk options:dpdk-devargs=0000:01:00.0
+        # ovs-vsctl add-port obr1 dpdk-p2 -- set Interface dpdk-p2 type=dpdk options:dpdk-devargs=0000:01:00.1
+        # ovs-vsctl add-port obr1 vhost-user1 -- set Interface vhost-user1 type=dpdkvhostuser
+        # ovs-vsctl add-port obr1 vhost-user2 -- set Interface vhost-user2 type=dpdkvhostuser
+        # ovs-ofctl add-flow obr1 in_port=1,action=output:3
+        # ovs-ofctl add-flow obr1 in_port=3,action=output:1
+        # ovs-ofctl add-flow obr1 in_port=2,action=output:4
+        # ovs-ofctl add-flow obr1 in_port=4,action=output:2
+
+    Configure OVS (second variant):
+
+        # ovs-vsctl add-br obr1 -- set bridge obr1 datapath_type=netdev
+        # ovs-vsctl add-port obr1 dpdk-p1 -- set Interface dpdk-p1 type=dpdk options:dpdk-devargs=0000:01:00.0
+        # ovs-vsctl add-port obr1 vhost-user1 -- set Interface vhost-user1 type=dpdkvhostuser
+        # ovs-ofctl add-flow obr1 in_port=1,action=output:2
+        # ovs-ofctl add-flow obr1 in_port=2,action=output:1
+
+        # ovs-vsctl add-br obr2 -- set bridge obr2 datapath_type=netdev
+        # ovs-vsctl add-port obr2 dpdk-p2 -- set Interface dpdk-p2 type=dpdk options:dpdk-devargs=0000:01:00.1
+        # ovs-vsctl add-port obr2 vhost-user2 -- set Interface vhost-user2 type=dpdkvhostuser
+        # ovs-ofctl add-flow obr2 in_port=1,action=output:2
+        # ovs-ofctl add-flow obr2 in_port=2,action=output:1
+
+    Tell OVS to use the first two cores for DPDK PMD threads (this
+    configuration is persistent across reboots):
+
+        # ovs-vsctl --no-wait set Open_vSwitch . other_config:pmd-cpu-mask=0x3
+
+    Set CPU affinity properly, so that dpdk-p1 and vhost-user1 are managed
+    by core 0, while dpdk-p2 and vhost-user2 are managed by core 1):
+
+        # ovs-vsctl set interface dpdk-p1 other_config:pmd-rxq-affinity="0:0"
+        # ovs-vsctl set interface vhost-user1 other_config:pmd-rxq-affinity="0:0"
+        # ovs-vsctl set interface dpdk-p2 other_config:pmd-rxq-affinity="0:1"
+        # ovs-vsctl set interface vhost-user2 other_config:pmd-rxq-affinity="0:1"
+
+    Run the QEMU VM:
+
+    # qrun -i ~/git/vm/netmap.qcow2 -m 10 -f virtio-net-pci -b vhost-user --unix-socket /var/run/openvswitch/vhost-user1 -f virtio-net-pci -b vhost-user --unix-socket /var/run/openvswitch/vhost-user2 --no-unix-server --memory 1024M --temp -o stdio
+
+
+============== SR-IOV ================
+
+    Append the 'pci=assign-busses' kernel boot parameter, otherwise the default
+    BIOS BDF assignment could make it impossible to allocate BDFs for the VFs,
+    and the instructions below will fail.
+
+    The recommended method to create functions is the following, assuming
+    "03:00.1" is the BDF of the NIC PCI device:
+
+        # echo 4 > /sys/bus/pci/devices/0000:03:00.1/sriov_numvfs
+
+    In this case 4 VFs will be created. The sriov_totalvfs file in the same
+    directory contains the maximum number of VFs.
+
+    Useful URL: http://www.linux-kvm.org/page/10G_NIC_performance:_VFIO_vs_virtio
+
+    If you want to PCI-passthrough a VF, use the pci-stub driver rather than
+    vfio-pci, as there is a bug that prevents vfio-pci to work (see below).
+
+
+
+========== PCI passthrough =========
+
+    The recommended way to passthrough PCI devices to QEMU VMs is through the
+    VFIO framework. One of the main issues is that you can't passthrough to
+    different VMs two PCI devices that are part of the same IOMMU group.
+
+    You can use this script (iommu-groups.sh)
+
+    #!/bin/bash
+    shopt -s nullglob
+    for d in /sys/kernel/iommu_groups/*/devices/*; do
+        n=${d#*/iommu_groups/*}; n=${n%%/*}
+        printf 'IOMMU Group %s ' "$n"
+        lspci -nns "${d##*/}"
+    done;
+
+    to check how PCI devices are assigned to IOMMU groups.
+
+    If you don't like the mapping (i.e. there are two PCI devices that you want
+    to assign to two different VMs), then you need to use a patched kernel.
+    For archlinux, just install the linux-vfio AUR package and boot the
+    corresponding kernel, appending the 'pcie_acs_override=downstream' kernel
+    boot parameter.
+    Once you boot the linux-vfio kernel, run the iommu-groups.sh script to check
+    that PCI devices end up in different IOMMU groups.
+
+    Once you fix the IOMMU groups problem you need to load some modules
+
+        # modprobe vfio
+        # modprobe vfio-pci
+        # modprobe vfio_iommu_type1
+        # modprobe vfio_virqfd
+
+    then unbind the PCI device (03:00.1) from its driver:
+
+        # echo "0000:03:00.1" > /sys/bus/pci/devices/0000:03:00.1/driver/unbind
+
+    bind its vendor and device id to vfio-pci:
+
+        # echo "8086 10fb" > /sys/bus/pci/drivers/vfio-pci/new_id
+
+    and add this option to QEMU command-line: '-device vfio-pci,host=03:00.1'.
+
+    Useful links:
+        - http://vfio.blogspot.it/2014/08/iommu-groups-inside-and-out.html
+        - https://wiki.archlinux.org/index.php/PCI_passthrough_via_OVMF
+
+
+
+
+########## ERROR with VFIO PCI passthrough of an SR-IOV VF #####
+
+    # qemu-system-x86_64 /home/vmaffione/git/vm/netmap.qcow2 -enable-kvm -smp 2 -m 2G -vga std -nographic -snapshot -device e1000,netdev=mgmt,mac=00:AA:BB:CC:0a:99 -netdev user,id=mgmt,hostfwd=tcp::20010-:22  -device vfio-pci,host=02:10.1
+
+qemu-system-x86_64: VFIO_MAP_DMA: -14
+qemu-system-x86_64: vfio_dma_map(0x56017b4b75b0, 0xfebf0000, 0x4000, 0x7fcb60724000) = -14 (Bad address)
+qemu: hardware error: vfio: DMA mapping failed, unable to continue
+****** per-CPU register dump follows (omitted) *******
+QEMU terminated with an exception
+
+    In contrast, using pci-stub (-device pci-assign,host=02:10.1) just works.
+
