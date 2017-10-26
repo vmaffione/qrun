@@ -471,7 +471,11 @@ try:
             cmd = 'sudo ip tuntap add mode tap name %s' % backend_ifname
             if args.num_queues > 1:
                 cmd += ' multi_queue'
-            cmdexe(cmd)
+            try:
+                cmdexe(cmd)
+            except:
+                print("Failed to create the TAP device '%s'" % backend_ifname)
+                quit(1)
             cmdexe('sudo ip link set %s up' % backend_ifname)
 
             if args.bridging:
