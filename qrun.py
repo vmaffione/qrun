@@ -153,7 +153,7 @@ argparser.add_argument('-m', '--mgmt-idx', type = int,
                        default = 1)
 argparser.add_argument('--mgmt-nic',
                        help = "NIC model to use for mgmt", type = str,
-                       choices = ['e1000', 'virtio-net-pci', 'pcnet',
+                       choices = ['e1000', 'e1000e', 'virtio-net-pci', 'pcnet',
                                   'ne2k_pci', 'rtl8139', 'e1000-paravirt'],
                        default = 'e1000')
 argparser.add_argument('-n', '--idx', action='append',
@@ -170,7 +170,7 @@ argparser.add_argument('-b', '--backend-type', action='append',
                        default = [])
 argparser.add_argument('-f', '--frontend-type', action='append',
                        help = "Network frontend", type = str,
-                       choices = ['e1000', 'virtio-net-pci', 'pcnet',
+                       choices = ['e1000', 'e1000e', 'virtio-net-pci', 'pcnet',
                                   'ne2k_pci', 'rtl8139', 'e1000-paravirt',
                                   'ptnet-pci'],
                        default = [])
