@@ -200,6 +200,10 @@ argparser.add_argument('--interrupt-mitigation', action='store_true',
                        help = "Enable NIC interrupt mitigation")
 argparser.add_argument('--passthrough', action='store_true',
                        help = "Enable netmap passthrough optimization")
+argparser.add_argument('--kloop-direct-tx', action='store_true',
+                       help = "Use direct tx with netmap passthrough")
+argparser.add_argument('--kloop-direct-rx', action='store_true',
+                       help = "Use direct rx with netmap passthrough")
 argparser.add_argument('--kernel',
                        help = "Path to the kernel to be used by the VM "
                               "(direct boot mode)", type = str)
@@ -422,6 +426,9 @@ try:
         if args.backend_type[i] in ['netmap', 'netmap-pipe-master', 'netmap-pipe-slave']:
             if args.passthrough or args.frontend_type[i] in ['ptnet-pci']:
                 cmdline += ',passthrough=on'
+                kloop_tx = 'off' if args.kloop_direct_tx else 'on'
+                kloop_rx = 'off' if args.kloop_direct_rx else 'on'
+                cmdline += ',klooptx=%s,klooprx=%s' % (kloop_tx, kloop_rx)
 
         del vars_dict
 
